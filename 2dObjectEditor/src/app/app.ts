@@ -6,6 +6,91 @@ import { Polygon, RenderedObject, Point, Line } from './types';
 import { ObjectPropsEditor } from './object-props-editor/object-props-editor';
 import { SceneObjectList } from "./scene-object-list/scene-object-list";
 
+function normalizeVec2(vec: Point): Point {
+    const len = Math.sqrt(vec[0] ** 2 + vec[1] ** 2);
+    return [vec[0] / len, vec[1] / len];
+}
+/**
+ * SAT
+ * 
+ */
+
+function collideSAT(polygon: Polygon, test: Polygon) {
+
+  const axises = [...getAxis(polygon), ...getAxis(test)]
+  var amin: number|null = null;
+  var amax = null;
+  var bmin = null;
+  var bmax = null;
+
+  for(var i = 0; i < axises.length; i++){
+      amin = null;
+      amax = null;
+      bmin = null;
+      bmax = null;
+      for(var j = 0; j < polygon.length; j++){
+            const dot = polygon[j][0] *
+                  axises[i][0] +
+                  polygon[j][1] *
+                  axises[i][1];
+            if(amax === null || dot > amax){
+                    amax = dot;
+               }
+            if(amin === null || dot < amin){
+                amin = dot;
+            }
+      } // end
+      for(var j = 0; j < test.length; j++){
+            const dot = test[j][0] *
+                  axises[i][0] +
+                  test[j][1] *
+                  axises[i][1];
+            if(bmax === null || dot > bmax){
+                  bmax = dot;
+            }
+            if(bmin === null || dot < bmin){
+                  bmin = dot;
+            }
+        }
+        
+        if (amin === null || bmin === null || amax === null || bmax === null) {
+
+          continue
+        }
+
+          if((amin < bmax && amin > bmin) ||
+             (bmin < amax && bmin > amin)){
+               continue;
+          }
+          else {
+               return false;
+          }
+
+      } 
+
+      return true
+
+}
+
+
+
+function getAxis(polygon: Polygon) {
+
+  const axisList: Point[] = []
+
+  for (let i = 0; i < polygon.length; i++) {
+      const A = polygon[i];
+      const B = polygon[(i + 1) % polygon.length];  // wraps around to close the polygon
+      
+      const edge = { x: B[0] - A[0], y: B[1] - A[1] };
+      const axis = { x: -edge.y, y: edge.x };  // 90° rotation
+      const axisNormalized = normalizeVec2([axis.x, axis.y])
+      axisList.push(axisNormalized)
+
+  }
+  return axisList
+
+}
 
 function polygonIntersect(polygon: Polygon, test: Polygon) {
   
@@ -219,7 +304,7 @@ function boundingBoxPolygon(polygon: Polygon): Polygon {
   
   <div class="flex w-full"> 
     <canvas #canvas
-    class="bg-red-200"
+    class="bg-red-100"
     [width]="width" [height]="height"></canvas>
 
   <div class="flex flex-col w-full">
@@ -301,6 +386,7 @@ export class App implements AfterViewInit {
     this.renderedObjectsChanged()
     return [...this.renderedObjects]
   })
+
   ngAfterViewInit(): void {
 
     const canvas = this.canvas().nativeElement
@@ -390,6 +476,8 @@ export class App implements AfterViewInit {
 
 
         this.checkCollission(this.selectedObject)
+
+
 
         this.selectedObjectChanged.update(v => !v)
       }
@@ -485,7 +573,7 @@ export class App implements AfterViewInit {
     position?: [number, number]
     rotation?: number
   }) {
-
+    const color = obj.color ?? "blue"
     const name = obj.name ?? "Object"
     this.renderedObjects.push(
       {
@@ -494,10 +582,12 @@ export class App implements AfterViewInit {
         selected: false,
         originSelected: false,
         showBoundingBox: false,
-        color: obj.color ?? "blue",
+        color: color, 
         origin: obj.origin ?? [0, 0],
         position: [this.width / 2, this.height / 2],
         rotation: obj.rotation ?? 0,
+        colorPrevious: color, 
+        collisions: [],
       }
     )
 
@@ -527,18 +617,20 @@ export class App implements AfterViewInit {
       name: "hahahaha",
       originSelected: false,
       selected: false,
-      showBoundingBox: false
+      showBoundingBox: false,
+      collisions: [],
+      colorPrevious: ""
     }
     this.addSceneObject(box)
 
 
 
-    this.addSceneObject({
-      shape: [
-        [0, 0], [200, 200]
-      ]
+    // this.addSceneObject({
+    //   shape: [
+    //     [0, 0], [200, 200]
+    //   ]
 
-    })
+    // })
   }
 
   drawPolygon(polygon: Polygon) {
@@ -589,6 +681,7 @@ export class App implements AfterViewInit {
 
       this.drawPolygon(polygon)
 
+
       ctx.fillStyle = o.color
       ctx.fill()
       ctx.strokeStyle = o.selected ? "blue" : "black";
@@ -608,8 +701,45 @@ export class App implements AfterViewInit {
       }
 
 
+      // SAT
+
+      for (const other of this.renderedObjects) {
+
+        if (o === other) continue
+
+        const polygonOther = translatePolygon(other)
+
+        const bbCollision = checkBoundingBoxCollision(boundingBoxPolygon(polygon), boundingBoxPolygon(polygonOther))
+        if (!bbCollision) {
+
+
+          o.color = "blue"
+          other.color = "blue"
+        continue
+        }
+        
+        const collision = collideSAT(polygon, polygonOther)
+        //console.log("Collision ?", collision);
+        // o.collisions = o.collisions.filter(x => x !== other)
+        // other.collisions = other.collisions.filter(x => x !== o)
+        // o.collisions = []
+        // other.collisions = []
+        if (collision) {
+          console.log("COLLISION", o.name, other.name)
+          // o.collisions.push(other)
+          // other.collisions.push(o)
+
+          o.color = "red"
+          other.color = "red"
+         } else {
+          o.color = "blue"
+          other.color = "blue"
+         }
+
+
     }
 
 
+  }
   }
 }
